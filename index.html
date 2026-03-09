@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>World Clock</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #6B73FF 100%);
+      font-family: 'Nunito', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 16px 48px;
+    }
+
+    header { text-align: center; margin-bottom: 28px; }
+
+    h1 {
+      font-family: 'Orbitron', monospace;
+      font-size: 2.2rem;
+      color: #fff;
+      letter-spacing: 2px;
+    }
+
+    .mode-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255,255,255,0.18);
+      border-radius: 30px;
+      padding: 6px 18px;
+      margin-top: 12px;
+    }
+
+    .mode-bar label { color: #fff; font-weight: 700; }
+
+    .mode-bar select {
+      background: white;
+      border: none;
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-family: 'Nunito', sans-serif;
+      font-weight: 700;
+      color: #4a3a8a;
+      cursor: pointer;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 22px;
+      max-width: 960px;
+      width: 100%;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.93);
+      border-radius: 20px;
+      padding: 20px 16px 22px;
+      box-shadow: 0 8px 32px rgba(80,40,120,0.18);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      transition: transform 0.18s;
+    }
+
+    .card:hover { transform: translateY(-4px) scale(1.02); }
+
+    .city-name { font-size: 1.05rem; font-weight: 800; color: #4f46e5; }
+    .flag-code { font-size: 0.72rem; font-weight: 700; color: #6c63ff; margin-right: 4px; }
+
+    .digital-time {
+      font-family: 'Orbitron', monospace;
+      font-size: 1.65rem;
+      font-weight: 700;
+      color: #1e1b4b;
+      letter-spacing: 2px;
+    }
+
+    .date-label { font-size: 0.78rem; color: #888; font-weight: 600; }
+
+    .clock-wrap { width: 130px; height: 130px; }
+    canvas.clock-canvas { width: 130px; height: 130px; }
+
+    .digital-section, .analog-section {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    body.mode-digital .analog-section { display: none; }
+    body.mode-analog  .digital-section { display: none; }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <h1>🌍 World Clock</h1>
+    <div class="mode-bar">
+      <label>Display Mode:</label>
+      <select id="modeSelect" onchange="setMode(this.value)">
+        <option value="both">Both</option>
+        <option value="digital">Digital</option>
+        <option value="analog">Analog</option>
+      </select>
+    </div>
+  </header>
+
+  <div class="grid" id="clockGrid"></div>
+
+  <script>
+    const cities = [
+      { name: "Hanoi, Vietnam",           code: "VN", tz: "Asia/Ho_Chi_Minh"  },
+      { name: "Yangon, Myanmar",          code: "MM", tz: "Asia/Rangoon"      },
+      { name: "Seoul, Korea",             code: "KR", tz: "Asia/Seoul"        },
+      { name: "Tokyo, Japan",             code: "JP", tz: "Asia/Tokyo"        },
+      { name: "Singapore",                code: "SG", tz: "Asia/Singapore"    },
+      { name: "Kuala Lumpur, Malaysia",   code: "MY", tz: "Asia/Kuala_Lumpur" },
+    ];
+
+    const canvases = [];
+
+    function buildCards() {
+      const grid = document.getElementById('clockGrid');
+      cities.forEach((city, i) => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <div class="city-name"><span class="flag-code">${city.code}</span>${city.name}</div>
+          <div class="digital-section">
+            <div class="digital-time" id="dt-${i}">--:--:--</div>
+            <div class="date-label"  id="dd-${i}">--</div>
+          </div>
+          <div class="analog-section">
+            <div class="clock-wrap">
+              <canvas class="clock-canvas" id="cv-${i}" width="260" height="260"></canvas>
+            </div>
+          </div>
+        `;
+        grid.appendChild(card);
+        canvases.push(document.getElementById(`cv-${i}`));
+      });
+    }
+
+    function getTimeInTZ(tz) {
+      const now = new Date();
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz,
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        hour12: false
+      }).formatToParts(now);
+      const get = type => parseInt(parts.find(p => p.type === type)?.value ?? '0');
+      return { h: get('hour'), m: get('minute'), s: get('second') };
+    }
+
+    function getDateInTZ(tz) {
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone: tz,
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+      }).format(new Date());
+    }
+
+    function pad(n) { return String(n).padStart(2, '0'); }
+
+    function drawClock(canvas, h, m, s) {
+      const ctx = canvas.getContext('2d');
+      const W = canvas.width, H = canvas.height;
+      const cx = W/2, cy = H/2, r = W/2 - 10;
+
+      ctx.clearRect(0, 0, W, H);
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI*2);
+      ctx.fillStyle = '#f8f8ff';
+      ctx.fill();
+      ctx.strokeStyle = '#6c63ff';
+      ctx.lineWidth = 5;
+      ctx.stroke();
+
+      for (let i = 1; i <= 12; i++) {
+        const angle = (i*30 - 90) * Math.PI/180;
+        ctx.font = `bold ${W*0.085}px Nunito,sans-serif`;
+        ctx.fillStyle = '#333';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(i, cx + Math.cos(angle)*(r-22), cy + Math.sin(angle)*(r-22));
+      }
+
+      function drawHand(deg, len, width, color) {
+        const rad = (deg-90)*Math.PI/180;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(rad)*len, cy + Math.sin(rad)*len);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+      }
+
+      drawHand((h%12)*30 + m*0.5, r*0.48, 7, '#1e1b4b');
+      drawHand(m*6 + s*0.1,       r*0.68, 5, '#1e1b4b');
+      drawHand(s*6,               r*0.75, 2, '#ef4444');
+
+      ctx.beginPath(); ctx.arc(cx,cy,6,0,Math.PI*2); ctx.fillStyle='#1e1b4b'; ctx.fill();
+      ctx.beginPath(); ctx.arc(cx,cy,3,0,Math.PI*2); ctx.fillStyle='#ef4444'; ctx.fill();
+    }
+
+    function tick() {
+      cities.forEach((city, i) => {
+        const {h,m,s} = getTimeInTZ(city.tz);
+        document.getElementById(`dt-${i}`).textContent = `${pad(h)}:${pad(m)}:${pad(s)}`;
+        document.getElementById(`dd-${i}`).textContent = getDateInTZ(city.tz);
+        drawClock(canvases[i], h, m, s);
+      });
+    }
+
+    function setMode(val) { document.body.className = `mode-${val}`; }
+
+    buildCards();
+    tick();
+    setInterval(tick, 1000);
+  </script>
+
+</body>
+</html>
